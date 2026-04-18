@@ -24,7 +24,6 @@ const SECRET_KEYS = [
   'GROK_API_KEY',
   'OPENROUTER_API_KEY',
   'CEREBRAS_API_KEY',
-  'CLOUDFLARE_AI_GATEWAY_TOKEN',
 ];
 
 function run(cmd: string, opts: { allowFail?: boolean } = {}) {

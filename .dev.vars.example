@@ -20,6 +20,6 @@ GOOGLE_AI_STUDIO_API_KEY=
 GROK_API_KEY=
 OPENROUTER_API_KEY=
 
-# AI Gateway auth token (optional — only needed if the gateway has
-# authentication enabled; Ranse's auto-provisioned gateway does not).
-CLOUDFLARE_AI_GATEWAY_TOKEN=
+# (Optional) If you later enable authentication on the `ranse` AI Gateway,
+# add CLOUDFLARE_AI_GATEWAY_TOKEN via dashboard → Variables → Secrets or
+# `wrangler secret put`. Not prompted during deploy.

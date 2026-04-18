@@ -37,9 +37,6 @@ ANTHROPIC_API_KEY=
 GOOGLE_AI_STUDIO_API_KEY=
 GROK_API_KEY=
 OPENROUTER_API_KEY=
-
-# Optional — gateway auth token if you enable authentication on the gateway.
-CLOUDFLARE_AI_GATEWAY_TOKEN=
 `;
 
 writeFileSync(path, contents, { mode: 0o600 });
