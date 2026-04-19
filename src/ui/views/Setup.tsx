@@ -10,6 +10,7 @@ export function SetupView({ onDone }: { onDone: () => void }) {
     admin_password: '',
     admin_name: '',
   });
+  const [showToken, setShowToken] = useState(false);
   const [mailbox, setMailbox] = useState({ address: '', display_name: '' });
   const [error, setError] = useState('');
   const [checks, setChecks] = useState<any>(null);
@@ -49,12 +50,35 @@ export function SetupView({ onDone }: { onDone: () => void }) {
             <h2>Step 1 · Admin account</h2>
             <div className="field">
               <label>Setup token</label>
-              <input
-                value={form.setup_token}
-                onChange={(e) => setForm({ ...form, setup_token: e.target.value })}
-                placeholder="Paste your ADMIN_SETUP_TOKEN"
-                required
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  value={form.setup_token}
+                  onChange={(e) => setForm({ ...form, setup_token: e.target.value })}
+                  placeholder="Paste your ADMIN_SETUP_TOKEN"
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                  style={{ paddingRight: 56 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  style={{
+                    position: 'absolute',
+                    right: 4,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {showToken ? 'Hide' : 'Show'}
+                </button>
+              </div>
               <div className="muted" style={{ marginTop: 6, lineHeight: 1.55 }}>
                 <strong>Where to find it:</strong>
                 <ol style={{ margin: '4px 0 0 0', paddingLeft: 20 }}>
