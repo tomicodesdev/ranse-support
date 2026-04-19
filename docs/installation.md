@@ -9,11 +9,11 @@ There are two supported install paths: **one-click deploy** (recommended) and **
    - Create a new Worker in your Cloudflare account.
    - Provision D1, R2, KV, Queues, and Durable Objects from `wrangler.jsonc`.
    - Prompt you for the variables declared with empty-string defaults.
-2. Fill in the prompts:
-   - `APP_URL` — leave blank on first deploy; update after you know the Worker URL.
-   - `ADMIN_EMAIL` — your admin account email.
-   - `SUPPORT_DOMAIN` — the domain you'll use for support email.
-   - `CLOUDFLARE_API_TOKEN` — build-time token Cloudflare auto-injects; leave as-is.
+2. The Deploy UI prompts for two optional secrets — **leave both blank**:
+   - `COOKIE_SIGNING_KEY` — auto-generated if blank.
+   - `ADMIN_SETUP_TOKEN` — auto-generated if blank.
+
+   You'll give Ranse your admin email, workspace name, and support mailbox address in the `/setup` wizard after the Worker is live — no need to enter them twice.
 3. Cloudflare runs `bun run deploy` which:
    - Generates `COOKIE_SIGNING_KEY` and `ADMIN_SETUP_TOKEN` if not set.
    - Builds the React console (`vite build`).

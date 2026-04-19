@@ -13,9 +13,6 @@
   // to Worker secrets post-deploy via scripts/deploy.ts.
   "vars": {
     "APP_NAME": "Ranse",
-    "APP_URL": "",
-    "ADMIN_EMAIL": "",
-    "SUPPORT_DOMAIN": "",
     "LLM_DEFAULT_MODEL": "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   },
 

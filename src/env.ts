@@ -2,9 +2,6 @@ import type { Ai, D1Database, DurableObjectNamespace, KVNamespace, Queue, R2Buck
 
 export interface Env {
   APP_NAME: string;
-  APP_URL: string;
-  ADMIN_EMAIL: string;
-  SUPPORT_DOMAIN: string;
   LLM_DEFAULT_MODEL: string;
 
   // Optional — only set if the user adds a custom AI Gateway URL in the

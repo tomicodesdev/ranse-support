@@ -131,20 +131,6 @@ async function main() {
   generateIfMissing('COOKIE_SIGNING_KEY');
   generateIfMissing('ADMIN_SETUP_TOKEN');
 
-  // Scrub placeholder vars that may have leaked in from .dev.vars.example.
-  // APP_URL defaults to Secure cookies when unset; localhost would disable them in prod.
-  if (process.env.APP_URL && /localhost|127\.0\.0\.1/i.test(process.env.APP_URL)) {
-    console.log('  · cleared APP_URL (was localhost — set it in the dashboard post-deploy)');
-    process.env.APP_URL = '';
-  }
-  for (const k of ['ADMIN_EMAIL', 'SUPPORT_DOMAIN'] as const) {
-    const v = process.env[k];
-    if (v && looksLikePlaceholder(v)) {
-      console.log(`  · cleared ${k} (was placeholder "${v}")`);
-      process.env[k] = '';
-    }
-  }
-
   const secretsPresent = SECRET_KEYS.filter((k) => process.env[k]);
   const prodVarsPath = '.prod.vars';
   writeFileSync(
