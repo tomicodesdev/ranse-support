@@ -34,6 +34,10 @@ const SECRET_KEYS = [
   'CEREBRAS_API_KEY',
 ];
 
+/** Secrets we generate ourselves on first deploy. Re-runs must NOT rotate
+ * these or active /setup wizard tokens + cookies break. */
+const AUTO_GENERATED = new Set(['COOKIE_SIGNING_KEY', 'ADMIN_SETUP_TOKEN']);
+
 const DEPLOY_CONFIG_PATH = 'wrangler.deploy.jsonc';
 
 function run(cmd: string, opts: { allowFail?: boolean } = {}) {
@@ -150,6 +154,25 @@ async function ensureQueue(cf: Cloudflare, accountId: string, queueName: string)
   console.log(`  · Queue "${queueName}" created`);
 }
 
+/**
+ * List the names of secrets currently set on a Worker. Returns an empty set
+ * if the Worker doesn't exist yet (first deploy) or if the call fails — both
+ * cases are safe because the caller proceeds to generate/push as needed.
+ */
+function listExistingSecrets(workerName: string): Set<string> {
+  try {
+    const out = execSync(`wrangler secret list --name ${workerName}`, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).toString();
+    const start = out.indexOf('[');
+    if (start < 0) return new Set();
+    const arr = JSON.parse(out.slice(start)) as Array<{ name: string }>;
+    return new Set(arr.map((s) => s.name));
+  } catch {
+    return new Set();
+  }
+}
+
 function generateIfMissing(key: string): void {
   const existing = process.env[key];
   if (existing && !looksLikePlaceholder(existing)) return;
@@ -259,8 +282,22 @@ async function main() {
   const { configPath, dbName } = await provisionAndPatchConfig(cf, accountId, workerName);
 
   console.log('· Preparing deploy-time secrets');
-  generateIfMissing('COOKIE_SIGNING_KEY');
-  generateIfMissing('ADMIN_SETUP_TOKEN');
+  // Re-runs must not rotate auto-generated secrets that are already on the
+  // Worker — that would invalidate the user's saved ADMIN_SETUP_TOKEN and
+  // log out any active sessions. Probe `wrangler secret list` once and
+  // skip both generation + push for AUTO_GENERATED keys that already exist.
+  const existingSecrets = listExistingSecrets(workerName);
+  const generatedThisRun = new Set<string>();
+  for (const key of AUTO_GENERATED) {
+    if (existingSecrets.has(key)) {
+      console.log(`  · ${key} already set on Worker — leaving as-is`);
+      delete process.env[key];
+      continue;
+    }
+    const before = process.env[key];
+    generateIfMissing(key);
+    if (process.env[key] && process.env[key] !== before) generatedThisRun.add(key);
+  }
 
   const secretsPresent = SECRET_KEYS.filter((k) => process.env[k]);
   const prodVarsPath = '.prod.vars';
@@ -287,17 +324,26 @@ async function main() {
     run(`wrangler secret bulk ${prodVarsPath} --config ${configPath}`);
   }
 
-  const setupToken = process.env.ADMIN_SETUP_TOKEN ?? '';
   const bar = '━'.repeat(72);
-  console.log(`\n${bar}`);
-  console.log('  ✓ DEPLOY COMPLETE — SAVE THIS VALUE NOW');
-  console.log(bar);
-  console.log('\n  ADMIN_SETUP_TOKEN (one-time use at /setup):\n');
-  console.log(`    ${setupToken}\n`);
-  console.log('  You will NOT be able to retrieve this from the dashboard later');
-  console.log('  (Cloudflare secrets are write-only). If you lose it, rotate it:\n');
-  console.log('    wrangler secret put ADMIN_SETUP_TOKEN\n');
-  console.log('  Then visit the Worker URL and finish the /setup wizard.');
+  if (generatedThisRun.has('ADMIN_SETUP_TOKEN')) {
+    const setupToken = process.env.ADMIN_SETUP_TOKEN ?? '';
+    console.log(`\n${bar}`);
+    console.log('  ✓ DEPLOY COMPLETE — SAVE THIS VALUE NOW');
+    console.log(bar);
+    console.log('\n  ADMIN_SETUP_TOKEN (one-time use at /setup):\n');
+    console.log(`    ${setupToken}\n`);
+    console.log('  You will NOT be able to retrieve this from the dashboard later');
+    console.log('  (Cloudflare secrets are write-only). If you lose it, rotate it:\n');
+    console.log('    wrangler secret put ADMIN_SETUP_TOKEN\n');
+    console.log('  Then visit the Worker URL and finish the /setup wizard.');
+  } else {
+    console.log(`\n${bar}`);
+    console.log('  ✓ DEPLOY COMPLETE');
+    console.log(bar);
+    console.log('\n  ADMIN_SETUP_TOKEN was already set on the Worker — your existing');
+    console.log('  /setup token still works. To rotate it:\n');
+    console.log('    wrangler secret put ADMIN_SETUP_TOKEN');
+  }
   console.log(`${bar}\n`);
 }
 
