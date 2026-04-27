@@ -1,16 +1,25 @@
 /**
- * Cloudflare Email provisioning — onboards a sending subdomain via the
- * `/zones/:zone_id/email/sending/subdomains` API, adds DKIM/SPF/DMARC
- * records, enables Email Routing, and routes a single address at a named
- * Worker. All requests go through direct `fetch` against api.cloudflare.com
- * with a user-supplied scoped token.
+ * Cloudflare Email provisioning — enables Email Routing on the zone and
+ * creates a single address-to-Worker routing rule. All requests go through
+ * direct `fetch` against api.cloudflare.com with a user-supplied scoped
+ * token.
  *
- * Note: Cloudflare's Email Sending API is *zone-scoped* (despite many
- * Cloudflare APIs being account-scoped). The required token permission is
- * "Zone · Email Sending: Edit" — NOT "Account · Email Sending: Edit", which
- * is why earlier attempts using `/accounts/:account_id/email/sending/...`
- * failed with `10001: Unable to authenticate request` even when the account
- * permission was granted.
+ * Why no Email Sending: Cloudflare explicitly forbids Email Sending and
+ * Email Routing on the same zone ("No other email services can be active
+ * in the domain you are configuring." — developers.cloudflare.com/email-
+ * routing/get-started/enable-email-routing/). For the OSS template's
+ * single-domain default, Routing is the right choice — inbound to the
+ * Worker is the load-bearing capability. Outbound replies go through
+ * the Worker's `send_email` binding without needing Email Sending
+ * onboarding. Users who specifically want DKIM-signed custom-domain
+ * outbound can opt-in by setting Email Sending up on a separate
+ * delegated zone — that's documented separately and not run by this
+ * wizard.
+ *
+ * Helper functions for Email Sending (onboardSendingDomain,
+ * getSendingDnsRecords) are kept exported below for any opt-in caller
+ * that wants them, but the default applyProvisioning flow does not
+ * touch them.
  */
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
@@ -229,9 +238,8 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
     return steps;
   }
 
-  // Zone is required for *both* sending and routing — the sending API is
-  // zone-scoped now, not account-scoped — so fail-fast if the domain isn't
-  // on this Cloudflare account.
+  // Zone is required for Email Routing. Fail-fast if the domain isn't on
+  // this Cloudflare account.
   const zone = await findZone(input.apiToken, input.domain).catch(() => null);
   if (!zone) {
     steps.push({
@@ -239,80 +247,39 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
       label: `Zone for "${input.domain}" not found on this Cloudflare account`,
       status: 'fail',
       message:
-        'Cloudflare Email Sending and Email Routing both require the domain to be a zone on this account. Add the domain at dash.cloudflare.com → Add a site, then retry.',
+        'Email Routing requires the domain to be a zone on this account. Add the domain at dash.cloudflare.com → Add a site, then retry.',
     });
     return steps;
   }
   steps.push({ id: 'zone', label: `Zone "${zone.zoneName}" found on Cloudflare`, status: 'ok' });
 
-  let dnsRecords: SendingDnsRecord[] = [];
+  // Cloudflare forbids Email Routing on a zone that has Email Sending active.
+  // If a sending subdomain exists, we can't enable Routing — surface a
+  // pointer to the un-onboard step rather than letting /enable 10000 with
+  // an opaque "Authentication error" later on.
   try {
-    const result = await onboardSendingDomain(input.apiToken, zone.zoneId, input.domain);
-    steps.push({
-      id: 'sending',
-      label: result.created
-        ? `Sending domain "${input.domain}" onboarded`
-        : `Sending domain "${input.domain}" already onboarded`,
-      status: 'ok',
-    });
-    dnsRecords = await getSendingDnsRecords(input.apiToken, zone.zoneId, result.subdomain.tag);
-    steps.push({
-      id: 'dns-fetch',
-      label: `Fetched ${dnsRecords.length} DNS records (DKIM / SPF / DMARC)`,
-      status: 'ok',
-      dns_records: dnsRecords,
-    });
-  } catch (err: any) {
-    steps.push({ id: 'sending', label: 'Onboard sending domain', status: 'fail', message: err.message });
-    return steps;
-  }
-
-  let added = 0;
-  let skipped = 0;
-  let routingManaged = 0;
-  const routingManagedRecords: string[] = [];
-  const failures: string[] = [];
-  for (const r of dnsRecords) {
-    try {
-      await addDnsRecord(input.apiToken, zone.zoneId, r);
-      added++;
-    } catch (err: any) {
-      const msg = String(err.message ?? err);
-      if (/already exists|duplicate/i.test(msg)) {
-        skipped++;
-      } else if (/managed by Email Routing/i.test(msg)) {
-        // Email Routing claims ownership of the entire zone's MX records,
-        // including subdomain MX (like cf-bounce.<zone> for Email Sending
-        // bounces). We can't write these while Routing is enabled — note
-        // them as a soft warning rather than a hard failure. Sending still
-        // works without bounce-handling MX; the user can add them by hand
-        // if they want bounce processing.
-        routingManaged++;
-        routingManagedRecords.push(`${r.type} ${r.name} → ${r.content}`);
-      } else {
-        failures.push(`${r.type} ${r.name}: ${msg}`);
-      }
+    const sending = await cfFetch<SendingSubdomain[]>(
+      `/zones/${zone.zoneId}/email/sending/subdomains`,
+      { method: 'GET', token: input.apiToken },
+    ).catch(() => [] as SendingSubdomain[]);
+    if (sending.length > 0) {
+      const names = sending.map((s) => s.name).join(', ');
+      steps.push({
+        id: 'conflict',
+        label: 'Email Sending is active on this zone — must be removed first',
+        status: 'fail',
+        message:
+          `Cloudflare does not allow Email Sending and Email Routing on the same zone. Found Email Sending subdomain(s): ${names}.\n\n` +
+          `To unblock setup, delete the sending subdomain in the Cloudflare dashboard (Email → Email Sending → click the domain → Delete), or via API:\n\n` +
+          `    curl -X DELETE -H "Authorization: Bearer <token>" \\\n      https://api.cloudflare.com/client/v4/zones/${zone.zoneId}/email/sending/subdomains/<subdomain_id>\n\n` +
+          `Once cleared, Retry this step. (Ranse uses the Worker's send_email binding for outbound replies — Email Sending onboarding is not required.)`,
+      });
+      return steps;
     }
+  } catch {
+    // Token may lack Email Sending: Read; ignore — if Sending IS active and
+    // we can't see it, /enable will surface the conflict anyway.
   }
-  const parts = [`${added} added`];
-  if (skipped) parts.push(`${skipped} already present`);
-  if (routingManaged) parts.push(`${routingManaged} skipped (managed by Email Routing)`);
-  if (failures.length) parts.push(`${failures.length} failed`);
-  steps.push({
-    id: 'dns-add',
-    label: `DNS records: ${parts.join(', ')}`,
-    status: failures.length ? 'fail' : 'ok',
-    message:
-      [
-        failures.length ? `Failed:\n${failures.join('\n')}` : '',
-        routingManaged
-          ? `Email Routing manages this zone's MX records, so these bounce-handling MX entries from Email Sending could not be written. Sending will still work; bounces won't be auto-processed. To add them anyway: temporarily disable Email Routing, add the records, re-enable.\n\n${routingManagedRecords.join('\n')}`
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n') || undefined,
-    dns_records: dnsRecords,
-  });
 
   try {
     const er = await enableEmailRouting(input.apiToken, zone.zoneId);
