@@ -1,15 +1,21 @@
 /**
- * Cloudflare Email provisioning. Two-zone architecture:
+ * Cloudflare Email provisioning — single-zone architecture:
  *
- *   Apex zone (e.g. getranse.com)         → Email Routing (inbound to Worker)
- *   Sending subdomain zone (e.g. mail.X)  → Email Sending (outbound DKIM-signed)
+ *   Apex zone (e.g. getranse.com)
+ *     ├── Email Routing on apex     → MX → mx.cloudflare.net (inbound)
+ *     └── Email Sending subdomain   → DKIM/SPF/DMARC on mail.<apex>
+ *                                      MX → cf-bounce.mail.<apex>
  *
- * Cloudflare forbids Email Sending and Email Routing on the same zone
- * ("No other email services can be active in the domain you are
- * configuring."). Two zones get us full functionality: customers email
- * support@<apex>, replies/proactive sends are DKIM-signed via
- * mail.<apex>, and DMARC alignment is "relaxed" since both share the
- * organizational domain.
+ * Cloudflare's "no other email services on the same zone" rule applies
+ * to apex-level email (you can't onboard <apex> for Sending while it
+ * has Routing). But the Sending API takes a subdomain *name* within a
+ * zone — not a separate zone — so Sending on mail.<apex> coexists with
+ * Routing on <apex> because their DNS records don't overlap (different
+ * MX hostnames, different DKIM record names). DMARC alignment is
+ * relaxed (organizational domain match), so outbound from
+ * mail.<apex> still passes DMARC for <apex>.
+ *
+ * No separate zone needed — works on Cloudflare Free.
  *
  * Why we don't enable Email Routing programmatically: both GET
  * /zones/:id/email/routing and POST /zones/:id/email/routing/enable
@@ -18,10 +24,6 @@
  * scopes that aren't available to tokens. We detect Routing state via
  * the *.mx.cloudflare.net MX records the onboard flow installs, and
  * point the user at the dashboard for the one-time Routing onboard.
- *
- * Why we ask the user to delegate mail.<apex> as a separate zone:
- * Cloudflare's same-zone email-services exclusivity rule. The wizard
- * surfaces clear instructions if the subdomain isn't a zone yet.
  */
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
@@ -280,42 +282,14 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
   }
   steps.push({ id: 'routing', label: 'Email Routing is enabled', status: 'ok' });
 
-  // Email Sending lives on a delegated subdomain (mail.<apex>) because
-  // Cloudflare forbids Sending and Routing on the same zone. We expect
-  // the user to have added mail.<apex> as a separate zone in Cloudflare
-  // (Add a site → mail.<apex> → delegate NS to Cloudflare). If that
-  // hasn't happened, surface clear instructions instead of failing
-  // opaquely.
+  // Onboard Email Sending as a *subdomain* of the apex zone. The Sending
+  // API takes a subdomain name within an existing zone — no separate
+  // zone delegation needed. Sending on mail.<apex> coexists with
+  // Routing on <apex> because their DNS records don't overlap.
   const sendingDomain = `mail.${input.domain}`;
-  const sendingZone = await findZone(input.apiToken, sendingDomain).catch(() => null);
-  if (!sendingZone || sendingZone.zoneName !== sendingDomain) {
-    steps.push({
-      id: 'sending-zone',
-      label: `Sending subdomain zone "${sendingDomain}" not found on Cloudflare`,
-      status: 'fail',
-      message:
-        `Outbound mail uses a separate Cloudflare zone for the sending subdomain so DKIM/SPF/DMARC records don't conflict with Email Routing on the apex.\n\n` +
-        `1. Click "Add a site" below, enter ${sendingDomain}, pick the Free plan, accept Cloudflare's nameservers.\n` +
-        `2. Add NS records for ${sendingDomain} pointing to those nameservers — at the parent ${input.domain} zone (Cloudflare → DNS → add 2 NS records) or at your registrar if ${input.domain} isn't on Cloudflare.\n` +
-        `3. Wait for the new zone to show "active" status, then return here and click Retry.`,
-      actions: [
-        {
-          url: `https://dash.cloudflare.com/${input.accountId}/add-site`,
-          label: 'Add a site →',
-        },
-      ],
-    });
-    return steps;
-  }
-  steps.push({
-    id: 'sending-zone',
-    label: `Sending subdomain zone "${sendingDomain}" found`,
-    status: 'ok',
-  });
-
   let sendingDnsRecords: SendingDnsRecord[] = [];
   try {
-    const result = await onboardSendingDomain(input.apiToken, sendingZone.zoneId, sendingDomain);
+    const result = await onboardSendingDomain(input.apiToken, zone.zoneId, sendingDomain);
     steps.push({
       id: 'sending-onboard',
       label: result.created
@@ -325,7 +299,7 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
     });
     sendingDnsRecords = await getSendingDnsRecords(
       input.apiToken,
-      sendingZone.zoneId,
+      zone.zoneId,
       result.subdomain.tag,
     );
     steps.push({
@@ -349,7 +323,7 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
   const sendingDnsFailures: string[] = [];
   for (const r of sendingDnsRecords) {
     try {
-      await addDnsRecord(input.apiToken, sendingZone.zoneId, r);
+      await addDnsRecord(input.apiToken, zone.zoneId, r);
       added++;
     } catch (err: any) {
       const msg = String(err.message ?? err);

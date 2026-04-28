@@ -246,7 +246,7 @@ export function SetupView({ onDone }: { onDone: () => void }) {
                 Auto-configure Cloudflare (optional)
               </summary>
               <p className="muted" style={{ marginTop: 8 }}>
-                Two-zone setup: <strong>{mailbox.address ? mailbox.address.split('@')[1] : 'your-domain.com'}</strong> handles inbound via Email Routing → Worker; <strong>mail.{mailbox.address ? mailbox.address.split('@')[1] : 'your-domain.com'}</strong> handles outbound via Email Sending (DKIM-signed). Routing must be enabled once via the Cloudflare dashboard (no API for that step), and the sending subdomain must be a separate Cloudflare zone (Add a site → <code>mail.{mailbox.address ? mailbox.address.split('@')[1] : 'your-domain.com'}</code>). The wizard tells you exactly what to do if either piece is missing. Token is used once and not stored.
+                Single-zone setup on <strong>{mailbox.address ? mailbox.address.split('@')[1] : 'your-domain.com'}</strong>: inbound via Email Routing → Worker, outbound DKIM-signed via Email Sending on <code>mail.{mailbox.address ? mailbox.address.split('@')[1] : 'your-domain.com'}</code> (a subdomain of the same zone — no separate Cloudflare zone needed). Routing has to be enabled once via the dashboard (no API for that step); everything else runs API-only. Token is used once and not stored.
               </p>
               <p className="muted" style={{ fontSize: 12 }}>
                 Required token permissions:{' '}
