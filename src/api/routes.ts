@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { getAgentByName } from 'agents';
 import type { Env } from '../env';
 import { getSession } from '../lib/auth';
 import { apiError } from '../lib/errors';
@@ -15,8 +16,10 @@ type Ctx = { Bindings: Env; Variables: { session: AuthedSession } };
 export const apiApp = new Hono<Ctx>();
 
 function getSupervisor(env: Env, workspaceId: string) {
-  const id = env.WorkspaceSupervisorAgent.idFromName(workspaceId);
-  return env.WorkspaceSupervisorAgent.get(id);
+  // Cast to the SDK's expected `Agent<Cloudflare.Env>` shape — our custom
+  // Env doesn't extend Cloudflare.Env, so the generic match fails. The
+  // namespace itself is the right one; only the type parameter differs.
+  return getAgentByName(env.WorkspaceSupervisorAgent as never, workspaceId);
 }
 
 apiApp.use('*', async (c, next) => {
@@ -29,14 +32,14 @@ apiApp.use('*', async (c, next) => {
 apiApp.get('/tickets', async (c) => {
   const s = c.get('session');
   const status = c.req.query('status');
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   const tickets = await (stub as any).listTickets({ status, limit: 50 });
   return c.json({ tickets });
 });
 
 apiApp.get('/tickets/:id', async (c) => {
   const s = c.get('session');
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   const data = await (stub as any).getTicket(c.req.param('id'));
   if (!data) return apiError(c, 'not_found', 'That ticket doesn\'t exist or is not in your workspace.');
   return c.json(data);
@@ -45,7 +48,7 @@ apiApp.get('/tickets/:id', async (c) => {
 apiApp.post('/tickets/:id/assign', async (c) => {
   const s = c.get('session');
   const body = z.object({ userId: z.string().nullable() }).parse(await c.req.json());
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   await (stub as any).assignTicket({ ticketId: c.req.param('id'), userId: body.userId, actorUserId: s.userId });
   return c.json({ ok: true });
 });
@@ -55,7 +58,7 @@ apiApp.post('/tickets/:id/status', async (c) => {
   const body = z
     .object({ status: z.enum(['open', 'pending', 'resolved', 'closed', 'spam']) })
     .parse(await c.req.json());
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   await (stub as any).setTicketStatus({ ticketId: c.req.param('id'), status: body.status, actorUserId: s.userId });
   return c.json({ ok: true });
 });
@@ -63,14 +66,14 @@ apiApp.post('/tickets/:id/status', async (c) => {
 apiApp.post('/tickets/:id/note', async (c) => {
   const s = c.get('session');
   const body = z.object({ body: z.string().min(1).max(20000) }).parse(await c.req.json());
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   await (stub as any).addInternalNote({ ticketId: c.req.param('id'), body: body.body, actorUserId: s.userId });
   return c.json({ ok: true });
 });
 
 apiApp.get('/approvals', async (c) => {
   const s = c.get('session');
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   const approvals = await (stub as any).listApprovals();
   return c.json({ approvals });
 });
@@ -80,7 +83,7 @@ apiApp.post('/approvals/:id/approve', async (c) => {
   const body = z
     .object({ edits: z.object({ subject: z.string().optional(), body_markdown: z.string().optional() }).optional() })
     .parse(await c.req.json().catch(() => ({})));
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   const result = await (stub as any).approveAndSend({ approvalId: c.req.param('id'), actorUserId: s.userId, edits: body.edits });
   return c.json(result);
 });
@@ -88,7 +91,7 @@ apiApp.post('/approvals/:id/approve', async (c) => {
 apiApp.post('/approvals/:id/reject', async (c) => {
   const s = c.get('session');
   const body = z.object({ reason: z.string().optional() }).parse(await c.req.json().catch(() => ({})));
-  const stub = getSupervisor(c.env, s.workspaceId);
+  const stub = await getSupervisor(c.env, s.workspaceId);
   await (stub as any).rejectApproval({ approvalId: c.req.param('id'), actorUserId: s.userId, reason: body.reason });
   return c.json({ ok: true });
 });
@@ -159,7 +162,7 @@ apiApp.post('/settings/llm', async (c) => {
 
 apiApp.get('/settings/providers', async (c) => {
   const s = c.get('session');
-  const stub = c.env.UserSecretsStore.get(c.env.UserSecretsStore.idFromName(s.workspaceId));
+  const stub = await getAgentByName(c.env.UserSecretsStore as never, s.workspaceId);
   const providers = await (stub as any).listProviders();
   return c.json({ providers });
 });
@@ -167,14 +170,14 @@ apiApp.get('/settings/providers', async (c) => {
 apiApp.post('/settings/providers', async (c) => {
   const s = c.get('session');
   const body = z.object({ provider: z.string(), api_key: z.string().min(1) }).parse(await c.req.json());
-  const stub = c.env.UserSecretsStore.get(c.env.UserSecretsStore.idFromName(s.workspaceId));
+  const stub = await getAgentByName(c.env.UserSecretsStore as never, s.workspaceId);
   await (stub as any).setKey({ provider: body.provider, apiKey: body.api_key });
   return c.json({ ok: true });
 });
 
 apiApp.delete('/settings/providers/:provider', async (c) => {
   const s = c.get('session');
-  const stub = c.env.UserSecretsStore.get(c.env.UserSecretsStore.idFromName(s.workspaceId));
+  const stub = await getAgentByName(c.env.UserSecretsStore as never, s.workspaceId);
   await (stub as any).deleteKey(c.req.param('provider'));
   return c.json({ ok: true });
 });

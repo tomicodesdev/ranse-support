@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
-import { routeAgentRequest } from 'agents';
+import { routeAgentRequest, getAgentByName } from 'agents';
 import type {
   ExecutionContext,
   ForwardableEmailMessage,
@@ -104,7 +104,7 @@ export default {
       );
     }
 
-    const mailboxStub = env.MailboxAgent.get(env.MailboxAgent.idFromName(routed.mailboxId));
+    const mailboxStub = await getAgentByName(env.MailboxAgent as never, routed.mailboxId);
     await (mailboxStub as any).recordInbound({ autoReply: parsed.isAutoReply });
 
     const payload: InboundEmailPayload = {
@@ -127,8 +127,9 @@ export default {
       attachmentCount: parsed.attachments.length,
     };
 
-    const supervisorStub = env.WorkspaceSupervisorAgent.get(
-      env.WorkspaceSupervisorAgent.idFromName(routed.workspaceId),
+    const supervisorStub = await getAgentByName(
+      env.WorkspaceSupervisorAgent as never,
+      routed.workspaceId,
     );
     await (supervisorStub as any).ingestEmail(payload);
   },
