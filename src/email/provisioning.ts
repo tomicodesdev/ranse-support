@@ -206,6 +206,7 @@ export interface ProvisionStep {
   status: 'ok' | 'fail' | 'skipped';
   message?: string;
   dns_records?: SendingDnsRecord[];
+  actions?: Array<{ url: string; label: string }>;
 }
 
 export interface ProvisionInput {
@@ -266,9 +267,14 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
       status: 'fail',
       message:
         `Email Routing has to be enabled in the Cloudflare dashboard (it can't be enabled via API tokens — Cloudflare gates the /email/routing/enable endpoint behind an internal permission that no token UI exposes).\n\n` +
-        `Open: https://dash.cloudflare.com/?to=/:account/email/email-routing\n` +
-        `Click "Onboard Domain" for ${input.domain}, accept Cloudflare's MX records, then return here and click Retry.\n\n` +
+        `Click "Onboard Domain" for ${input.domain}, accept Cloudflare's MX records, then return here and click Retry. ` +
         `Once Routing is on, this wizard will create the support-mailbox routing rule via API automatically.`,
+      actions: [
+        {
+          url: `https://dash.cloudflare.com/${input.accountId}/email-service/routing`,
+          label: 'Open Email Routing dashboard →',
+        },
+      ],
     });
     return steps;
   }
@@ -289,11 +295,15 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
       status: 'fail',
       message:
         `Outbound mail uses a separate Cloudflare zone for the sending subdomain so DKIM/SPF/DMARC records don't conflict with Email Routing on the apex.\n\n` +
-        `1. Open: https://dash.cloudflare.com/?to=/:account/add-site\n` +
-        `2. Enter: ${sendingDomain}\n` +
-        `3. Pick the Free plan (or whatever you have), accept Cloudflare's nameservers\n` +
-        `4. Add NS records for ${sendingDomain} pointing to those nameservers — at the parent ${input.domain} zone (Cloudflare → DNS → add 2 NS records) or at your registrar if ${input.domain} isn't on Cloudflare\n` +
-        `5. Wait for the new zone to show "active" status in the dashboard, then come back here and click Retry.`,
+        `1. Click "Add a site" below, enter ${sendingDomain}, pick the Free plan, accept Cloudflare's nameservers.\n` +
+        `2. Add NS records for ${sendingDomain} pointing to those nameservers — at the parent ${input.domain} zone (Cloudflare → DNS → add 2 NS records) or at your registrar if ${input.domain} isn't on Cloudflare.\n` +
+        `3. Wait for the new zone to show "active" status, then return here and click Retry.`,
+      actions: [
+        {
+          url: `https://dash.cloudflare.com/${input.accountId}/add-site`,
+          label: 'Add a site →',
+        },
+      ],
     });
     return steps;
   }

@@ -27,6 +27,7 @@ interface ProvisionStep {
   status: 'ok' | 'fail' | 'skipped';
   message?: string;
   dns_records?: Array<{ type: string; name: string; content: string; priority?: number }>;
+  actions?: Array<{ url: string; label: string }>;
 }
 
 type Step = 1 | 2 | 3 | 4;
@@ -342,6 +343,30 @@ export function SetupView({ onDone }: { onDone: () => void }) {
                           >
                             {s.message}
                           </pre>
+                        )}
+                        {s.actions && s.actions.length > 0 && (
+                          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {s.actions.map((a) => (
+                              <a
+                                key={a.url}
+                                href={a.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '4px 10px',
+                                  fontSize: 12,
+                                  borderRadius: 4,
+                                  border: '1px solid var(--border)',
+                                  background: 'var(--bg-soft)',
+                                  textDecoration: 'none',
+                                  color: 'var(--fg)',
+                                }}
+                              >
+                                {a.label}
+                              </a>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>
