@@ -320,6 +320,8 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
 
   let added = 0;
   let alreadyPresent = 0;
+  let routingManaged = 0;
+  const routingManagedRecords: string[] = [];
   const sendingDnsFailures: string[] = [];
   for (const r of sendingDnsRecords) {
     try {
@@ -327,18 +329,37 @@ export async function applyProvisioning(input: ProvisionInput): Promise<Provisio
       added++;
     } catch (err: any) {
       const msg = String(err.message ?? err);
-      if (/already exists|duplicate/i.test(msg)) alreadyPresent++;
-      else sendingDnsFailures.push(`${r.type} ${r.name}: ${msg}`);
+      if (/already exists|duplicate/i.test(msg)) {
+        alreadyPresent++;
+      } else if (/managed by Email Routing/i.test(msg)) {
+        // Email Routing claims all MX records in the zone, including
+        // subdomain MX like cf-bounce.mail.<apex>. Sending still works
+        // without bounce-handling MX; bounces just won't be auto-
+        // processed. Soft warning, not a hard fail.
+        routingManaged++;
+        routingManagedRecords.push(`${r.type} ${r.name} → ${r.content}`);
+      } else {
+        sendingDnsFailures.push(`${r.type} ${r.name}: ${msg}`);
+      }
     }
   }
   const sendingParts = [`${added} added`];
   if (alreadyPresent) sendingParts.push(`${alreadyPresent} already present`);
+  if (routingManaged) sendingParts.push(`${routingManaged} skipped (managed by Email Routing)`);
   if (sendingDnsFailures.length) sendingParts.push(`${sendingDnsFailures.length} failed`);
   steps.push({
     id: 'sending-dns-add',
     label: `Sending DNS records: ${sendingParts.join(', ')}`,
     status: sendingDnsFailures.length ? 'fail' : 'ok',
-    message: sendingDnsFailures.length ? sendingDnsFailures.join('\n') : undefined,
+    message:
+      [
+        sendingDnsFailures.length ? `Failed:\n${sendingDnsFailures.join('\n')}` : '',
+        routingManaged
+          ? `Email Routing manages this zone's MX records, so the bounce-handling MX entries below couldn't be added. Sending still works fully; bounces just won't be auto-routed back to the Worker.\n\n${routingManagedRecords.join('\n')}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n') || undefined,
     dns_records: sendingDnsRecords,
   });
   if (sendingDnsFailures.length) return steps;
