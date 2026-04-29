@@ -15,12 +15,14 @@ export function SettingsView() {
   const [providers, setProviders] = useState<string[]>([]);
   const [provDraft, setProvDraft] = useState({ provider: 'openai', api_key: '' });
   const [llmConfig, setLlmConfig] = useState<any[]>([]);
+  const [aiDraftsEnabled, setAiDraftsEnabled] = useState(false);
   const [saved, setSaved] = useState('');
 
   async function load() {
-    const [p, l] = await Promise.all([API.providers(), API.llmConfig()]);
+    const [p, l, w] = await Promise.all([API.providers(), API.llmConfig(), API.workspaceSettings()]);
     setProviders(p.providers ?? []);
     setLlmConfig(l.config ?? []);
+    setAiDraftsEnabled(!!w.ai_drafts_enabled);
   }
   useEffect(() => { load(); }, []);
 
@@ -29,6 +31,27 @@ export function SettingsView() {
   return (
     <>
       <h1>Settings</h1>
+
+      <h2>AI auto-drafts</h2>
+      <div className="card">
+        <p className="muted" style={{ marginBottom: 8 }}>
+          When on, Ranse generates a suggested reply for every inbound email and posts it to the approvals queue for a human to review and send. When off, operators reply manually — but the "Suggest with AI" button on a ticket still works on demand.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={aiDraftsEnabled}
+            onChange={async (e) => {
+              const next = e.target.checked;
+              setAiDraftsEnabled(next);
+              await API.setWorkspaceSettings({ ai_drafts_enabled: next });
+              setSaved('Saved');
+              setTimeout(() => setSaved(''), 1500);
+            }}
+          />
+          <span>Auto-draft replies for new inbound emails</span>
+        </label>
+      </div>
 
       <h2>LLM providers (BYOK)</h2>
       <div className="card">

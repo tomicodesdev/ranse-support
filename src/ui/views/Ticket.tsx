@@ -4,6 +4,11 @@ import { API } from '../api';
 export function TicketView({ id, onBack }: { id: string; onBack: () => void }) {
   const [data, setData] = useState<any>(null);
   const [note, setNote] = useState('');
+  const [reply, setReply] = useState('');
+  const [replySubject, setReplySubject] = useState('');
+  const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [error, setError] = useState('');
   const [editingApproval, setEditingApproval] = useState<string | null>(null);
   const [edits, setEdits] = useState<{ subject: string; body_markdown: string }>({ subject: '', body_markdown: '' });
 
@@ -77,7 +82,61 @@ export function TicketView({ id, onBack }: { id: string; onBack: () => void }) {
             ))}
           </div>
 
-          <h2>Add internal note</h2>
+          <h2>Reply</h2>
+          <textarea
+            rows={6}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder={`Reply to ${ticket.requester_email}…`}
+          />
+          {error && <div className="error" style={{ marginTop: 6 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button
+              className="primary"
+              disabled={!reply.trim() || sending}
+              onClick={async () => {
+                setSending(true);
+                setError('');
+                try {
+                  const res = await API.reply(id, reply);
+                  if (!res.ok) throw new Error(res.error || 'Send failed');
+                  setReply('');
+                  setReplySubject('');
+                  await load();
+                } catch (err: any) {
+                  setError(err.message || 'Send failed');
+                } finally {
+                  setSending(false);
+                }
+              }}
+            >
+              {sending ? 'Sending…' : 'Send reply'}
+            </button>
+            <button
+              disabled={drafting}
+              onClick={async () => {
+                setDrafting(true);
+                setError('');
+                try {
+                  const res = await API.draftWithAI(id);
+                  if (!res.ok) throw new Error(res.error || 'Draft failed');
+                  // Draft posts to approvals queue async; show note + reload after a tick.
+                  setTimeout(async () => {
+                    setDrafting(false);
+                    await load();
+                  }, 1500);
+                } catch (err: any) {
+                  setError(err.message || 'Draft failed');
+                  setDrafting(false);
+                }
+              }}
+              title="Generate an AI-suggested draft. Lands in the approvals queue for you to review."
+            >
+              {drafting ? 'Drafting…' : 'Suggest with AI'}
+            </button>
+          </div>
+
+          <h2 style={{ marginTop: 24 }}>Add internal note</h2>
           <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Visible to teammates only" />
           <button style={{ marginTop: 8 }} disabled={!note.trim()} onClick={async () => { await API.addNote(id, note); setNote(''); await load(); }}>Add note</button>
         </div>
@@ -90,6 +149,23 @@ export function TicketView({ id, onBack }: { id: string; onBack: () => void }) {
                 {s}
               </button>
             ))}
+          </div>
+          <h2 style={{ marginTop: 16 }}>AI auto-drafts</h2>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            <select
+              value={ticket.ai_drafts_enabled === null || ticket.ai_drafts_enabled === undefined ? 'inherit' : ticket.ai_drafts_enabled === 1 ? 'on' : 'off'}
+              onChange={async (e) => {
+                const v = e.target.value;
+                const enabled = v === 'inherit' ? null : v === 'on';
+                await API.setTicketAiDrafts(id, enabled);
+                await load();
+              }}
+              style={{ width: '100%', padding: 4 }}
+            >
+              <option value="inherit">Inherit workspace default</option>
+              <option value="on">On for this ticket</option>
+              <option value="off">Off for this ticket</option>
+            </select>
           </div>
           <h2 style={{ marginTop: 16 }}>Audit</h2>
           <div style={{ fontSize: 12 }}>

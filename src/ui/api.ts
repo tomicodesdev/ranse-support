@@ -59,6 +59,19 @@ export const API = {
     api(`/api/tickets/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
   addNote: (id: string, body: string) =>
     api(`/api/tickets/${id}/note`, { method: 'POST', body: JSON.stringify({ body }) }),
+  reply: (id: string, body: string, subject?: string) =>
+    api<{ ok: boolean; messageId?: string; error?: string }>(`/api/tickets/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ body, subject }),
+    }),
+  draftWithAI: (id: string) =>
+    api<{ ok: boolean; error?: string }>(`/api/tickets/${id}/draft`, { method: 'POST' }),
+  setTicketAiDrafts: (id: string, enabled: boolean | null) =>
+    api(`/api/tickets/${id}/ai-drafts`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+  workspaceSettings: () =>
+    api<{ ai_drafts_enabled: boolean }>('/api/settings/workspace'),
+  setWorkspaceSettings: (settings: { ai_drafts_enabled: boolean }) =>
+    api('/api/settings/workspace', { method: 'POST', body: JSON.stringify(settings) }),
   approvals: () => api<any>('/api/approvals'),
   approve: (id: string, edits?: any) =>
     api(`/api/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify({ edits }) }),
