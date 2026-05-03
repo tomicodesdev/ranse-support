@@ -108,7 +108,13 @@ export function SettingsView() {
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             Paste a URL or upload an image (≤ 2MB, PNG/JPEG/WebP/GIF). Uploads are stored in your R2 bucket.
           </div>
-          {logoUrl && <img src={logoUrl} alt="Logo preview" style={{ maxHeight: 40, marginTop: 8 }} />}
+          {logoUrl && (
+            <img
+              src={logoUrl}
+              alt="Logo preview"
+              style={{ maxHeight: 40, maxWidth: 200, width: 'auto', marginTop: 8, alignSelf: 'flex-start' }}
+            />
+          )}
         </div>
       </div>
 
@@ -157,7 +163,7 @@ export function SettingsView() {
             />
           </div>
           {profile.avatar_url && (
-            <img src={profile.avatar_url} alt="Avatar preview" style={{ width: 40, height: 40, borderRadius: '50%', marginTop: 8, objectFit: 'cover' }} />
+            <img src={profile.avatar_url} alt="Avatar preview" style={{ width: 40, height: 40, borderRadius: '50%', marginTop: 8, objectFit: 'cover', alignSelf: 'flex-start' }} />
           )}
         </div>
         <div className="field">
