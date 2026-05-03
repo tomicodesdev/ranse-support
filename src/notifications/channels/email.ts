@@ -2,7 +2,7 @@ import type { ChannelHandler } from './types';
 import type { NotificationEvent } from '../events';
 import type { Env } from '../../env';
 
-function escape(s: string): string {
+function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -20,9 +20,9 @@ function render(event: NotificationEvent): RenderedMessage {
       return {
         subject: `[New ticket] ${p.subject}`,
         text: `New ticket from ${from}\n\n${p.subject}\n\n${p.preview}\n\n— Ranse`,
-        html: `<p><strong>New ticket</strong> from ${escape(from)}</p>` +
-              `<p style="font-size:16px;font-weight:600">${escape(p.subject)}</p>` +
-              `<p style="color:#555">${escape(p.preview)}</p>` +
+        html: `<p><strong>New ticket</strong> from ${escapeHtml(from)}</p>` +
+              `<p style="font-size:16px;font-weight:600">${escapeHtml(p.subject)}</p>` +
+              `<p style="color:#555">${escapeHtml(p.preview)}</p>` +
               `<p style="color:#888;font-size:12px">Sent by Ranse</p>`,
       };
     }
@@ -33,9 +33,9 @@ function render(event: NotificationEvent): RenderedMessage {
       return {
         subject: `[${tag}] ${p.subject}`,
         text: `${tag} from ${from}\n\n${p.subject}\n\n${p.preview}\n\n— Ranse`,
-        html: `<p><strong>${tag}</strong> from ${escape(from)}</p>` +
-              `<p style="font-size:16px;font-weight:600">${escape(p.subject)}</p>` +
-              `<p style="color:#555">${escape(p.preview)}</p>` +
+        html: `<p><strong>${tag}</strong> from ${escapeHtml(from)}</p>` +
+              `<p style="font-size:16px;font-weight:600">${escapeHtml(p.subject)}</p>` +
+              `<p style="color:#555">${escapeHtml(p.preview)}</p>` +
               `<p style="color:#888;font-size:12px">Sent by Ranse</p>`,
       };
     }
